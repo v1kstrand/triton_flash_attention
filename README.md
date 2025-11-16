@@ -308,11 +308,10 @@ Current limitations:
   * Causal masking
   * Arbitrary attention masks
   * Dropout
-  * Attention bias (for example, relative position bias or Continuous Position Bias (CPB — Continuous Position Bias))
+  * Attention bias (for example, relative position bias or Continuous Position Bias)
   * Rotary Positional Embedding (RoPE — Rotary Positional Embedding)
 
 Potential future extensions:
-
 * Causal and windowed attention variants.
 * Fused support for:
   * RoPE

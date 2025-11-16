@@ -1,4 +1,4 @@
-````markdown
+
 # <PROJECT NAME> — Triton FlashAttention-Style Scaled Dot Product Attention
 
 Custom [Triton](https://github.com/triton-lang/triton) kernels for Scaled Dot Product Attention (SDPA — Scaled Dot Product Attention), including both forward and backward passes, designed for Vision Transformer (ViT — Vision Transformer)–style workloads and small to medium sequence lengths.
@@ -45,11 +45,7 @@ The goal is to serve both as:
   - Simple functional API: `sdpa_triton_fa(q, k, v, ...)`.
   - Optional `torch.autograd.Function` wrapper for drop-in use in PyTorch modules.
 
----
-
 ## 3. Repository Structure
-
-> **Note:** This is a suggested layout. Adapt to your actual file names.
 
 ```text
 .
@@ -64,7 +60,6 @@ The goal is to serve both as:
 └─ pyproject.toml / setup.py (optional)  # Packaging (optional)
 ````
 
----
 
 ## 4. Installation
 

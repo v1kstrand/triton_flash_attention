@@ -38,8 +38,6 @@ The goal is to serve both as:
     - Number of warps
     - Number of stages
 
-
-
 ## Requirements
 
 * Python: `3.10+`

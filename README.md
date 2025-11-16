@@ -38,19 +38,14 @@ The goal is to serve both as:
     - Number of warps
     - Number of stages
 
-- **PyTorch integration**
-  - Simple functional API: `sdpa_triton_fa(q, k, v, ...)`.
-  - Optional `torch.autograd.Function` wrapper for drop-in use in PyTorch modules.
-
 
 
 ## Requirements
 
 * Python: `3.10+`
-* PyTorch: `2.71+`
+* PyTorch: `2.7+`
 * Triton: `3.3+`
 * CUDA: `cu118+` (tested on A100 80GB)
-
 
 ---
 
@@ -60,7 +55,7 @@ The goal is to serve both as:
 
 ```python
 import torch
-from vit_fa_triton import sdpa_triton_fa  # TODO: update import to your module path
+from triton_flash_attention.vit_fa_triton import sdpa_triton_fa
 
 B, H, N, D = 2, 8, 197, 64
 dtype = torch.bfloat16
@@ -70,7 +65,6 @@ q = torch.randn(B, H, N, D, device=device, dtype=dtype, requires_grad=True)
 k = torch.randn_like(q, requires_grad=True)
 v = torch.randn_like(q, requires_grad=True)
 
-# Triton FlashAttention-style SDPA
 o = sdpa_triton_fa(q, k, v) 
 
 loss = o.sum()
@@ -159,12 +153,9 @@ The benchmarks and comparisons above can be reproduced with helper functions in 
 
 ```python
 import torch
+from triton_flash_attention.triton_utils import bench_sdpa_throughput, compare_sdpa_variants
+from triton_flash_attention.vit_fa_triton import sdpa_triton_fa
 
-from vit_fa_triton import sdpa_triton_fa
-from triton_utils import compare_sdpa_variants, bench_sdpa_throughput
-
-# Alias for convenience (name used in the helpers below)
-sdpa_yt_fa = sdpa_triton_fa
 
 dtype = torch.float32
 device = "cuda"
@@ -179,8 +170,8 @@ V = torch.randn(B, H, N, D, device=device, dtype=dtype)
 # 1) Forward + backward correctness against different PyTorch SDPA backends
 compare_sdpa_variants(
     Q, K, V,
-    sdpa_yt_fa,
-    dO=None,  # will generate random dO if needed
+    sdpa_triton_fa,
+    dO=None,  
     kernels=["math", "mem", "flash"],
 )
 
@@ -189,7 +180,7 @@ bench_sdpa_throughput(
     Q, K, V,
     mode="fwdbwd",          # forward + backward
     print_table=True,
-    variants=(sdpa_yt_fa, "math", "mem", "flash"),
+    variants=(sdpa_triton_fa, "math", "mem", "flash"),
 )
 ```
 
@@ -310,7 +301,7 @@ Putting it all together:
 
 ## Limitations and future work
 
-Current limitations (fill with what actually applies):
+Current limitations:
 
 * No support yet for:
 
@@ -326,9 +317,6 @@ Potential future extensions:
 * Fused support for:
   * RoPE
   * Continuous position bias (CPB)
-* Better autotuning across a wider range of shapes and GPUs.
-
-
 
 ### License
 This project is licensed under the MIT License. 

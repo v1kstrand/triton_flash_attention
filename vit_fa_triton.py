@@ -1,12 +1,20 @@
-
+import os
+os.environ["TORCHDYNAMO_VERBOSE"]="1"
+os.environ["TRITON_PRINT_AUTOTUNING"]="1"
 import torch
 from torch import Tensor
 import triton
 import triton.language as tl
 
-GROUP_NM_SWEEP = [4, 8]
-NUM_STAGES_SWEEP = [2, 3, 4, 5]
-NUM_WARPS_SWEEP = [2, 4, 8]
+
+import math
+from torch import nn
+
+torch.backends.cuda.matmul.allow_tf32 = True
+
+GROUP_NM_SWEEP = [8]
+NUM_STAGES_SWEEP = [3, 4]
+NUM_WARPS_SWEEP = [4, 8]
 KEY_CACHE = ["BATCH_SIZE", "NUM_HEADS", "SEQ_LEN", "HEAD_DIM"]
 
 def _sdpa_comp_dtype(x: torch.Tensor) -> torch.dtype:

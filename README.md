@@ -3,12 +3,9 @@
 
 Custom [Triton](https://github.com/triton-lang/triton) kernels for Scaled Dot Product Attention (SDPA — Scaled Dot Product Attention), including both forward and backward passes, designed for Vision Transformer (ViT — Vision Transformer)–style workloads and small to medium sequence lengths.
 
-> **Status:** WIP template — TODOs are marked throughout this file.  
-> Replace placeholders like `<TODO: ...>` with your actual details.
-
 ---
 
-## 1. Overview
+## Overview
 
 This repository contains a custom FlashAttention-style implementation of Scaled Dot Product Attention (SDPA) in Triton:
 
@@ -23,7 +20,7 @@ The goal is to serve both as:
 
 ---
 
-## 2. Features
+## Features
 
 - **Full SDPA pipeline**
   - Forward: attention scores, online softmax, and output.
@@ -45,59 +42,25 @@ The goal is to serve both as:
   - Simple functional API: `sdpa_triton_fa(q, k, v, ...)`.
   - Optional `torch.autograd.Function` wrapper for drop-in use in PyTorch modules.
 
-## 3. Repository Structure
-
-```text
-.
-├─ triton_fa_full.py        # Main Triton kernels and PyTorch wrapper
-├─ bench.py                 # Microbenchmarks vs torch SDPA / FlashAttention
-├─ tests/
-│   ├─ test_correctness.py  # Output/gradient comparisons vs torch
-│   └─ test_shapes.py       # Edge cases, dtypes, etc.
-├─ examples/
-│   └─ vit_demo.py          # Minimal ViT / transformer block using this kernel
-├─ README.md                # This file
-└─ pyproject.toml / setup.py (optional)  # Packaging (optional)
-````
 
 
-## 4. Installation
+## Requirements
 
-### 4.1. Requirements
+* Python: `3.10+`
+* PyTorch: `2.71+`
+* Triton: `3.3+`
+* CUDA: `cu118+` (tested on A100 80GB)
 
-* Python: `<TODO: version, e.g. 3.10+>`
-* PyTorch: `<TODO: version, e.g. 2.2+>`
-* Triton: `<TODO: version, e.g. 3.x>`
-* GPU: NVIDIA GPU with CUDA `<TODO: version>` (tested on `<TODO: e.g. A100 80GB>`)
-
-### 4.2. Quick start
-
-```bash
-git clone https://github.com/<YOUR_USERNAME>/<REPO_NAME>.git
-cd <REPO_NAME>
-
-# (Optional) create and activate virtual environment here
-
-pip install -r requirements.txt  # TODO: add file or list deps below
-```
-
-If you do not use `requirements.txt`, list core dependencies here:
-
-```bash
-pip install torch triton
-# plus any extras you use in examples/tests, e.g.
-pip install einops pytest
-```
 
 ---
 
-## 5. Usage
+## Usage
 
-### 5.1. Basic example (drop-in SDPA — Scaled Dot Product Attention)
+### Basic example (drop-in SDPA — Scaled Dot Product Attention)
 
 ```python
 import torch
-from triton_FA_full import sdpa_triton_fa  # TODO: update import to your module path
+from vit_fa_triton import sdpa_triton_fa  # TODO: update import to your module path
 
 B, H, N, D = 2, 8, 197, 64
 dtype = torch.bfloat16
@@ -108,7 +71,7 @@ k = torch.randn_like(q, requires_grad=True)
 v = torch.randn_like(q, requires_grad=True)
 
 # Triton FlashAttention-style SDPA
-o = sdpa_triton_fa(q, k, v)  # TODO: update signature if different
+o = sdpa_triton_fa(q, k, v) 
 
 loss = o.sum()
 loss.backward()
@@ -117,125 +80,136 @@ print("Output shape:", o.shape)
 print("Grad q mean:", q.grad.float().abs().mean().item())
 ```
 
-### 5.2. Using the autograd Function class
+## Benchmarks
 
-If you expose a `torch.autograd.Function`, show how to wrap it in a module:
+All benchmarks in this section were run on:
+
+* **Shape:** `(B, H, N, D) = (1024, 6, 197, 64)`
+* **Dtype:** `torch.float32`
+* **Device:** `NVIDIA A100 80GB`
+* **Mode:** forward + backward (`fwdbwd`)
+* **Metric:** median latency over multiple runs, and effective elements/second (attention “elements” processed per second).
+
+We compare:
+
+* `sdpa_triton_fa` — this Triton FlashAttention-style kernel
+* `Torch math` — PyTorch Scaled Dot Product Attention (SDPA — Scaled Dot Product Attention) math backend
+* `Torch mem` — PyTorch SDPA memory-efficient backend
+* `Torch flash` — PyTorch SDPA FlashAttention backend
+
+### Throughput and latency
+
+| Variant          | Latency (ms, median) | Elements / s   |
+| ---------------- | -------------------- | -------------- |
+| `sdpa_triton_fa` | **7.796**            | **1.987×10¹⁰** |
+| Torch math       | 22.238               | 6.967×10⁹      |
+| Torch mem        | 10.781               | 1.437×10¹⁰     |
+| Torch flash      | 8.090                | 1.915×10¹⁰     |
+
+For this ViT (Vision Transformer)-style configuration, the custom Triton kernel is:
+
+* ~**2.9× faster** than the PyTorch math backend
+* ~**1.4× faster** than the PyTorch memory-efficient backend
+* Slightly **faster than PyTorch FlashAttention**, with comparable throughput
+
+(Exact speedups will vary by GPU, driver, and PyTorch/Triton versions.)
+
+---
+
+## Correctness
+
+We check both **forward outputs** and **backward gradients** against PyTorch SDPA for different backends (`math`, `mem`, `flash`).
+
+Each block below shows the maximum and mean absolute error between `sdpa_triton_fa` and the corresponding PyTorch backend, using the same `(B, H, N, D)` and dtype as above.
+
+### Versus Torch math backend
+
+```text
+[O ] max_abs_err = 9.194970e-03, mean_abs_err = 2.914664e-04
+[dQ] max_abs_err = 1.565409e-02, mean_abs_err = 3.622163e-04
+[dK] max_abs_err = 2.064800e-02, mean_abs_err = 3.542830e-04
+[dV] max_abs_err = 1.052654e-02, mean_abs_err = 2.979040e-04
+```
+
+### Versus Torch memory-efficient backend
+
+```text
+[O ] max_abs_err = 3.939509e-03, mean_abs_err = 1.471445e-04
+[dQ] max_abs_err = 1.608646e-02, mean_abs_err = 2.793679e-04
+[dK] max_abs_err = 1.820827e-02, mean_abs_err = 2.731781e-04
+[dV] max_abs_err = 3.893614e-03, mean_abs_err = 1.269000e-04
+```
+
+### Versus Torch Flash backend
+
+```text
+[O ] max_abs_err = 3.939509e-03, mean_abs_err = 1.974907e-04
+[dQ] max_abs_err = 1.421165e-02, mean_abs_err = 1.595823e-04
+[dK] max_abs_err = 1.820827e-02, mean_abs_err = 1.578689e-04
+[dV] max_abs_err = 3.893614e-03, mean_abs_err = 1.269283e-04
+```
+
+These error levels are consistent with floating-point differences between implementations using different fusion patterns and accumulation orders.
+
+---
+
+## Reproducing these numbers
+
+The benchmarks and comparisons above can be reproduced with helper functions in `triton_utils.py`:
 
 ```python
 import torch
-import torch.nn as nn
 
-from triton_FA_full import TritonAttention  # TODO: update import
+from vit_fa_triton import sdpa_triton_fa
+from triton_utils import compare_sdpa_variants, bench_sdpa_throughput
 
-class AttentionLayer(nn.Module):
-    def __init__(self):
-        super().__init__()
-        # TODO: add projections / config as needed
+# Alias for convenience (name used in the helpers below)
+sdpa_yt_fa = sdpa_triton_fa
 
-    def forward(self, q, k, v):
-        return TritonAttention.apply(q, k, v)
+dtype = torch.float32
+device = "cuda"
 
-# Example
-attn = AttentionLayer().cuda()
-out = attn(q, k, v)
+B, H, D = 1024, 6, 64
+N = 197
+
+Q = torch.randn(B, H, N, D, device=device, dtype=dtype)
+K = torch.randn(B, H, N, D, device=device, dtype=dtype)
+V = torch.randn(B, H, N, D, device=device, dtype=dtype)
+
+# 1) Forward + backward correctness against different PyTorch SDPA backends
+compare_sdpa_variants(
+    Q, K, V,
+    sdpa_yt_fa,
+    dO=None,  # will generate random dO if needed
+    kernels=["math", "mem", "flash"],
+)
+
+# 2) Throughput / latency table for Triton vs PyTorch SDPA variants
+bench_sdpa_throughput(
+    Q, K, V,
+    mode="fwdbwd",          # forward + backward
+    print_table=True,
+    variants=(sdpa_yt_fa, "math", "mem", "flash"),
+)
 ```
 
-### 5.3. Example: plugging into a ViT block
+* `compare_sdpa_variants` runs your kernel and the chosen PyTorch SDPA backends, then prints max and mean absolute errors for:
 
-> TODO: Add a short example in `examples/vit_demo.py` and reference it here.
+  * Output `O`
+  * Gradients `dQ`, `dK`, `dV`
+* `bench_sdpa_throughput` measures median latency and effective elements/second for each variant and prints a compact table like the one above.
 
----
+You can change `dtype`, `(B, H, N, D)`, or `mode` (for example, `"fwd"` or `"bwd"`) to explore other regimes and verify that performance and accuracy behave as expected.
 
-## 6. Benchmarks
-
-> This section is meant to be filled with your actual measurements.
-> Below is a template you can populate.
-
-### 6.1. Setup
-
-* **Hardware:**
-
-  * GPU: `<TODO: e.g. NVIDIA A100 80GB>`
-  * CPU: `<TODO: model>`
-* **Software:**
-
-  * OS: `<TODO: e.g. Ubuntu 22.04>`
-  * CUDA: `<TODO>`
-  * PyTorch: `<TODO>`
-  * Triton: `<TODO>`
-
-### 6.2. Shapes and dtypes
-
-We benchmark:
-
-* Shapes: `(B, H, N, D)` in `<TODO: list shapes>`
-
-  * For example: `(2, 6, 197, 64)`, `(4, 8, 512, 64)`, …
-* Dtypes:
-
-  * `torch.bfloat16`
-  * `torch.float16`
-  * (Optional) `torch.float32` for reference
-
-### 6.3. Latency comparison
-
-> **Note:** replace `X.XX` / `Y.YY` / `ZZ%` with your measured values.
-> You can measure forward and backward separately in `bench.py`.
-
-#### Forward + backward (single iteration, warm-cache)
-
-| Shape (B,H,N,D) | Dtype | Torch SDPA time (ms) | Triton FA time (ms) | Speedup |
-| --------------- | ----- | -------------------- | ------------------- | ------- |
-| (2, 6, 197, 64) | bf16  | X.XX                 | Y.YY                | ~ZZ %   |
-| (2, 6, 197, 96) | bf16  | X.XX                 | Y.YY                | ~ZZ %   |
-| (4, 8, 512, 64) | fp16  | X.XX                 | Y.YY                | ~ZZ %   |
-| …               | …     | …                    | …                   | …       |
-
-You can optionally split this into:
-
-* Forward-only latency
-* Backward-only latency
-* First call (compilation + autotuning) vs warm call
 
 ---
 
-## 7. Correctness
-
-We validate both **outputs** and **gradients** against `torch.nn.functional.scaled_dot_product_attention`.
-
-### 7.1. Output comparison
-
-For randomly initialized tensors:
-
-* `max_abs_diff(O_triton, O_torch) = <TODO>`
-* `max_rel_diff(O_triton, O_torch) = <TODO>`
-
-over shapes `<TODO>` and dtypes `<TODO>`.
-
-### 7.2. Gradient comparison
-
-We compute a reference output using PyTorch SDPA, then backpropagate a simple scalar loss and compare:
-
-* `max_abs_diff(dQ_triton, dQ_torch) = <TODO>`
-* `max_abs_diff(dK_triton, dK_torch) = <TODO>`
-* `max_abs_diff(dV_triton, dV_torch) = <TODO>`
-
-See `tests/test_correctness.py` for details.
-
-### 7.3. Optional: gradient check
-
-For small shapes in `float32`, we can use `torch.autograd.gradcheck` to verify analytical vs numerical gradients.
-
-> TODO: add small script or test snippet if you want this.
-
----
-
-## 8. Implementation details and intuition
+## Implementation details and intuition
 
 This section gives a high-level picture of how the Triton kernels are structured.
 It is meant to be readable first, then you can dive into the code.
 
-### 8.1. Intuition: forward pass (`_attn_fwd`)
+### Intuition: forward pass (`_attn_fwd`)
 
 The forward kernel `_attn_fwd` computes the standard attention operation
 
@@ -275,13 +249,13 @@ The result is a forward pass that:
 * Keeps most data in on-chip memory and registers.
 * Is numerically stable even in half precision.
 
-### 8.2. Intuition: backward pass
+### Intuition: backward pass
 
 `_attn_bwd_preprocess`, `_attn_bwd_dk_dv`, `_attn_bwd_dq`
 
 The backward pass is split into three kernels for clarity and performance:
 
-#### 8.2.1. Preprocess: softmax “delta” (`_attn_bwd_preprocess`)
+#### Preprocess: softmax “delta” (`_attn_bwd_preprocess`)
 
 The kernel `_attn_bwd_preprocess` computes a per-token scalar that is needed for the softmax gradient. Intuitively, for each query position it:
 
@@ -290,7 +264,7 @@ The kernel `_attn_bwd_preprocess` computes a per-token scalar that is needed for
 
 This is done once and stored in a compact tensor `D` that the next kernels can reuse.
 
-#### 8.2.2. Gradients with respect to K and V (`_attn_bwd_dk_dv`)
+#### Gradients with respect to K and V (`_attn_bwd_dk_dv`)
 
 The kernel `_attn_bwd_dk_dv` computes gradients for keys and values:
 
@@ -308,7 +282,7 @@ Inside the loop:
 
 Because each program “owns” a unique K/V block and only writes to its own rows of `dK` and `dV`, there is **no need for atomic operations**. This keeps the kernel simple and fast, even though it recomputes the local scores S one more time.
 
-#### 8.2.3. Gradients with respect to Q (`_attn_bwd_dq`)
+#### Gradients with respect to Q (`_attn_bwd_dq`)
 
 The kernel `_attn_bwd_dq` is symmetric to `_attn_bwd_dk_dv`, but with roles reversed:
 
@@ -332,17 +306,9 @@ Putting it all together:
 * `_attn_bwd_dk_dv` and `_attn_bwd_dq` both **rebuild S locally from Q and K**, but in complementary directions (fixed K/V vs fixed Q).
 * This design trades a small amount of extra compute (recomputing S) to avoid atomics and large intermediate storage, which tends to give **better throughput and simpler code** on modern GPUs.
 
-### 8.3. More low-level notes (optional)
-
-> TODO: If you want, add details here about:
->
-> * Exact block sizes you found to work well.
-> * Memory layouts and assumptions about strides.
-> * How you use `tl.make_block_ptr`, `tl.dot`, etc.
-
 ---
 
-## 9. Limitations and future work
+## Limitations and future work
 
 Current limitations (fill with what actually applies):
 
@@ -353,91 +319,17 @@ Current limitations (fill with what actually applies):
   * Dropout
   * Attention bias (for example, relative position bias or Continuous Position Bias (CPB — Continuous Position Bias))
   * Rotary Positional Embedding (RoPE — Rotary Positional Embedding)
-* Kernel is tuned primarily for:
-
-  * Sequence lengths around `<TODO: e.g. 197>`
-  * Head dimensions in `<TODO: e.g. 64–128>`
 
 Potential future extensions:
 
 * Causal and windowed attention variants.
 * Fused support for:
-
   * RoPE
   * Continuous position bias (CPB)
-  * Two-dimensional RoPE for ViT patch grids.
 * Better autotuning across a wider range of shapes and GPUs.
-* Integration with `torch.compile` and custom backends.
 
----
 
-## 10. Development
 
-### 10.1. Running tests
+### License
+This project is licensed under the MIT License. 
 
-```bash
-pytest tests
-```
-
-> TODO: Add any extra test commands or environment variables.
-
-### 10.2. Running benchmarks
-
-```bash
-python bench.py
-```
-
-> TODO: describe relevant CLI arguments (for example, shapes, dtypes).
-
----
-
-## 11. What this project demonstrates (optional section)
-
-You can keep this section to showcase skills to recruiters/clients, or move it to a separate document.
-
-This project demonstrates experience with:
-
-* Implementing a full **FlashAttention-style** SDPA pipeline in Triton:
-
-  * Custom forward and backward kernels without delegating core work to PyTorch.
-* Designing **online softmax** with log-sum-exp for numerical stability in half precision.
-* Using Triton effectively:
-
-  * Block tiling, `tl.dot`, `make_block_ptr` (if used), and swizzled program IDs.
-  * Autotuning kernel configurations for specific workload regimes.
-* Integrating custom kernels into PyTorch:
-
-  * `torch.autograd.Function`
-  * Correctness testing vs strong baselines (PyTorch SDPA).
-
-Feel free to edit or delete this section if you prefer a more neutral README.
-
----
-
-## 12. Acknowledgements
-
-> TODO: Add references and thanks.
-
-* PyTorch scaled dot product attention.
-* FlashAttention and related work.
-* Triton examples and documentation.
-
----
-
-## 13. License
-
-> TODO: Choose a license and link to it.
-
-Common choices:
-
-* MIT
-* Apache-2.0
-
-Example:
-
-```text
-This project is licensed under the MIT License. See LICENSE for details.
-```
-
-```
-```

@@ -77,7 +77,7 @@ print("Grad q mean:", q.grad.float().abs().mean().item())
 All benchmarks in this section were run on:
 
 * **Shape:** `(B, H, N, D) = (1024, 6, 197, 64)`
-* **Dtype:** `torch.float32`
+* **Dtype:** `torch.bfloat16`
 * **Device:** `NVIDIA A100 80GB`
 * **Mode:** forward + backward (`fwdbwd`)
 * **Metric:** median latency over multiple runs, and effective elements/second (attention “elements” processed per second).

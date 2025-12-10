@@ -1,5 +1,5 @@
 
-# <PROJECT NAME> — Triton FlashAttention-Style Scaled Dot Product Attention
+# <PROJECT NAME> Triton FlashAttention-Style Scaled Dot Product Attention
 
 Custom [Triton](https://github.com/triton-lang/triton) kernels for Scaled Dot Product Attention (SDPA), including both forward and backward passes, designed for Vision Transformer (ViT)–style workloads and small to medium sequence lengths.
 
